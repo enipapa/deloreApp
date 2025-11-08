@@ -9,80 +9,75 @@ const DashboardPage = () => {
   const [checkoutTask, setCheckoutTask] = useState(null);
   const [workSummary, setWorkSummary] = useState('');
 
-  // ✅ Fetch tasks on load
   useEffect(() => {
     fetchTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchTasks = async () => {
     try {
       const response = await axios.get('/api/tasks/my-tasks');
-      const allTasks = response.data.tasks || [];
+      console.log('Fetched tasks:', response.data.tasks);
+      const allTasks = Array.isArray(response.data.tasks) ? response.data.tasks : [];
 
-      // Only show pending/assigned/in-progress tasks
-      const upcomingTasks = allTasks.filter((task) =>
-        ['pending', 'assigned', 'in-progress'].includes(task.status)
+      // Show only pending/upcoming/assigned tasks on dashboard
+      const upcomingTasks = allTasks.filter(
+        (task) =>
+          task.status === 'pending' ||
+          task.status === 'assigned' ||
+          task.status === 'in-progress'
       );
 
-      setTasks(upcomingTasks.slice(0, 3)); // show first 3
+      console.log('Upcoming tasks:', upcomingTasks);
+      setTasks(upcomingTasks.slice(0, 3)); // Show first 3
     } catch (error) {
       console.error('Error fetching tasks:', error);
-      alert('Failed to load tasks. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Haversine formula for distance
+  // Haversine distance formula
   const haversine = (lat1, lon1, lat2, lon2) => {
     const toRad = (x) => (x * Math.PI) / 180;
     const R = 6371000; // meters
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
     const a =
-      Math.sin(dLat / 2) ** 2 +
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(toRad(lat1)) *
         Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) ** 2;
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
-  // ✅ Get coordinates
+  // Get user coordinates
   const getCurrentCoords = () =>
     new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        alert('Geolocation is not supported on this device.');
+      if (!navigator.geolocation)
         return reject(new Error('Geolocation not supported'));
-      }
       navigator.geolocation.getCurrentPosition(
         (pos) =>
           resolve({
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
           }),
-        (err) => {
-          alert(
-            'Unable to get your location. Please enable GPS or grant location permission.'
-          );
-          reject(new Error(err.message || 'Geolocation failed'));
-        },
+        (err) => reject(new Error(err.message || 'Geolocation failed')),
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     });
 
-  // ✅ Clock in
   const handleClockIn = async (task) => {
     const taskId = task.id || task._id;
     try {
       setProcessing(taskId);
 
-      // Optional time window validation
+      // Optional time check (within 30 min window)
       if (task.scheduledStartTime) {
         const start = new Date(task.scheduledStartTime).getTime();
         const now = Date.now();
-        const windowMs = 30 * 60 * 1000; // 30 mins
+        const windowMs = 30 * 60 * 1000;
         if (now < start - windowMs || now > start + windowMs) {
           alert(
             'You can only check in within 30 minutes before or after the scheduled start time.'
@@ -94,11 +89,8 @@ const DashboardPage = () => {
 
       const coords = await getCurrentCoords();
 
-      // Validate proximity
-      if (
-        task.coordinates?.latitude != null &&
-        task.coordinates?.longitude != null
-      ) {
+      // Distance check (within 500m)
+      if (task.coordinates?.latitude && task.coordinates?.longitude) {
         const dist = haversine(
           coords.latitude,
           coords.longitude,
@@ -127,13 +119,11 @@ const DashboardPage = () => {
     }
   };
 
-  // ✅ Clock out (open modal)
   const handleClockOut = (taskId) => {
     setCheckoutTask(taskId);
     setWorkSummary('');
   };
 
-  // ✅ Submit clock out report
   const submitClockOut = async () => {
     if (!checkoutTask) return;
     try {
@@ -179,9 +169,7 @@ const DashboardPage = () => {
         <h3 className="staff-card-title">Today's Assignment</h3>
 
         {tasks.length === 0 ? (
-          <div
-            style={{ textAlign: 'center', padding: '40px', color: '#666' }}
-          >
+          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
             <p>No assignments for today.</p>
           </div>
         ) : (
@@ -192,7 +180,7 @@ const DashboardPage = () => {
             >
               <div className="staff-assignment-header">
                 <span className="staff-client-name">
-                  {task.client?.name || task.title}
+                  {task.client?.name || task.title || 'Unnamed Task'}
                 </span>
                 <span className="staff-status-badge upcoming">
                   {task.status || 'Pending'}
@@ -230,7 +218,7 @@ const DashboardPage = () => {
                       href={`https://www.google.com/maps/dir/?api=1&destination=${
                         task.coordinates?.latitude && task.coordinates?.longitude
                           ? `${task.coordinates.latitude},${task.coordinates.longitude}`
-                          : encodeURIComponent(task.location || '')
+                          : encodeURIComponent(task.location)
                       }`}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -282,14 +270,8 @@ const DashboardPage = () => {
       </div>
 
       {checkoutTask && (
-        <div
-          className="modal-overlay"
-          onClick={() => setCheckoutTask(null)}
-        >
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="modal-overlay" onClick={() => setCheckoutTask(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Report & Check Out</h3>
               <button
